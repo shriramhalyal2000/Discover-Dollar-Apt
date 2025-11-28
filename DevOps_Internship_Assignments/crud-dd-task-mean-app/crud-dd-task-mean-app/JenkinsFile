@@ -23,6 +23,7 @@ pipeline {
                   echo "Building Docker image..."
                   pwd
                   ls  
+                  cd DevOps_Internship_Assignments/crud-dd-task-mean-app/crud-dd-task-mean-app/frontend
                   docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} .
                 """
             }
