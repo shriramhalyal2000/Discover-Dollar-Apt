@@ -52,7 +52,7 @@ pipeline {
                 sshagent(credentials: [EC2_SSH_CRED]) {
                     sh """
                       echo "Deploying on EC2..."
-                      ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
+                      ssh -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} '
                         set -e
                         echo "Pulling latest image..."
                         docker pull ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
