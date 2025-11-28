@@ -6,3 +6,5 @@ and The nginx reverse proxy also in same dir named readmenginxreverseproxy.md
 the dockerfile for frontend, backend are in the main app dir where build is triggerd so its best to exclude in their own dir crud-dd-task-mean-app
 same with docker-compose file with jenkins and 
 and the git hub repo link is https://github.com/shriramhalyal2000/Discover-Dollar-Apt.git dev branch, not main
+
+and the Application Submit button wont work because of cors error
