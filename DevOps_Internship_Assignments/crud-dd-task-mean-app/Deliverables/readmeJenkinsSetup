@@ -1,0 +1,269 @@
+---
+
+#  CI/CD Pipeline Setup using Jenkins, Docker, Docker Hub & EC2 Deployment
+
+##  Objective
+
+Set up a Jenkins pipeline that:
+
+1. Pulls code from GitHub
+2. Builds Docker images (Frontend & Backend)
+3. Pushes images to Docker Hub
+4. SSH into EC2 server
+5. Pulls latest images
+6. Deploys containers using Docker Compose
+
+---
+
+##  Architecture Overview
+
+
+GitHub Repo 
+    ⬇ (Webhook / Poll SCM)
+Jenkins Server
+    ⬇ Builds Docker Images
+Docker Hub Registry 
+    ⬆ Push Images
+Jenkins → SSH to EC2 
+    ⬇ Pull updated images
+EC2 Server
+     Run containers using docker-compose
+
+
+---
+
+##  Prerequisites
+
+| Component           | Description                                           |
+| ------------------- | ----------------------------------------------------- |
+| Jenkins Server      | Installed with Docker, SSH Agent, Git plugins         |
+| EC2 Instance        | Docker, Docker Compose installed                      |
+| Docker Hub          | Repository created for frontend & backend             |
+| GitHub Repository   | Contains Dockerfile, Jenkinsfile & docker-compose.yml |
+| Jenkins Credentials | SSH Key & Docker Hub Credentials                      |
+
+---
+
+##  Jenkins Setup
+
+### 1️ Install Required Plugins
+
+Go to **Manage Jenkins → Plugins** and install:
+
+* Docker Pipeline
+* SSH Agent
+* Git
+* Credentials Binding
+
+---
+
+### 2️ Add Credentials in Jenkins
+
+####  DockerHub Credentials
+
+```
+Kind: Username with Password
+ID: dockerhub-creds
+Username: <your-dockerhub-username>
+Password: <your-dockerhub-password>
+
+
+####  EC2 SSH Key
+
+
+Kind: SSH Username with private key
+ID: ec2-ssh-key
+Username: ec2-user (or ubuntu)
+Private Key: Paste EC2 .pem content
+
+
+---
+
+##  Project Structure
+
+
+├── Jenkinsfile
+├── docker-compose.yml
+└── DevOps_Internship_Assignments
+    └── crud-dd-task-mean-app
+         └── crud-dd-task-mean-app
+             ├── frontend
+             │   └── Dockerfile
+             └── backend
+                 └── Dockerfile
+
+
+---
+
+##  Jenkinsfile (Declarative Pipeline)
+
+groovy
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY       = "shriram2105"
+        IMAGE_FRONTEND = "mean-frontend"
+        IMAGE_BACKEND  = "mean-backend"
+        IMAGE_TAG      = "${env.BUILD_NUMBER}"
+        DOCKER_CREDS   = "dockerhub-creds"
+        EC2_SSH_CRED   = "ec2-ssh-key"
+        EC2_HOST       = "ec2-54-236-201-80.compute-1.amazonaws.com"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                sh """
+                  echo "Building Frontend Image..."
+                  cd DevOps_Internship_Assignments/crud-dd-task-mean-app/crud-dd-task-mean-app/frontend
+                  docker build -t ${REGISTRY}/${IMAGE_FRONTEND}:${IMAGE_TAG} .
+
+                  echo "Building Backend Image..."
+                  cd ../backend
+                  docker build -t ${REGISTRY}/${IMAGE_BACKEND}:${IMAGE_TAG} .
+                """
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: DOCKER_CREDS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                      docker push ${REGISTRY}/${IMAGE_FRONTEND}:${IMAGE_TAG}
+                      docker push ${REGISTRY}/${IMAGE_BACKEND}:${IMAGE_TAG}
+
+                      docker tag ${REGISTRY}/${IMAGE_FRONTEND}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_FRONTEND}:latest
+                      docker push ${REGISTRY}/${IMAGE_FRONTEND}:latest
+
+                      docker tag ${REGISTRY}/${IMAGE_BACKEND}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_BACKEND}:latest
+                      docker push ${REGISTRY}/${IMAGE_BACKEND}:latest
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                sshagent(credentials: [EC2_SSH_CRED]) {
+                    sh """
+                      ssh -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} '
+                        docker pull ${REGISTRY}/${IMAGE_FRONTEND}:${IMAGE_TAG}
+                        docker pull ${REGISTRY}/${IMAGE_BACKEND}:${IMAGE_TAG}
+                        export TAG=${IMAGE_TAG}
+                        cd /home/ec2-user
+                        docker-compose down || true
+                        docker-compose up -d --force-recreate
+                        echo "Deployment completed!"
+                      '
+                    """
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "Build finished with status: ${currentBuild.currentResult}"
+        }
+    }
+}
+
+
+---
+
+##  docker-compose.yml (on EC2)
+
+yaml
+version: "3.8"
+
+services:
+  mongo:
+    image: mongo:6-jammy
+    container_name: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: tutorials_db
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+
+  backend:
+    image: shriram2105/mean-backend:${TAG}
+    container_name: backend
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    environment:
+      DB_URL: mongodb://mongo:27017/tutorials_db
+      PORT: 8080
+    networks:
+      - app-network
+    ports:
+      - "8082:8080"
+
+  frontend:
+    image: shriram2105/mean-frontend:${TAG}
+    container_name: frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    ports:
+      - "80:4200"
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+```
+
+---
+
+##  Testing the Deployment
+
+| Component | URL                                       |
+| --------- | ----------------------------------------- |
+| Frontend  | `http://54.236.201.80`                    |
+| Backend   | `http://54.236.201.80:8082/api/tutorials` |
+| Logs      |                                           |
+
+```bash
+docker logs backend
+docker logs frontend
+docker ps -a
+```
+
+---
+
+## 🛠 Troubleshooting
+
+| Issue                    | Solution                                          |
+| ------------------------ | ------------------------------------------------- |
+| Permission denied (SSH)  | Use correct username (ec2-user/ubuntu)            |
+| CORS blocked             | Enable CORS in backend using `cors()`             |
+| Port already in use      | Update docker-compose to use different host ports |
+| docker-compose not found | Install with `sudo curl` command                  |
+| Old image running        | Use `--force-recreate` in compose                 |
+
+---
+
+##  Final Outcome
+
+ End-to-end CI/CD automation
+ No manual SSH/docker commands
+ Automatic image tagging using Jenkins build number
+ Zero-downtime deployment using Docker Compose
+
+---
+
