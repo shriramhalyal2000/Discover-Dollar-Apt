@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:6-jammy
+    container_name: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: tutorials_db
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+
+  backend:
+    image: shriram2105/mean-backend:latest
+    container_name: backend
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/tutorials_db
+      PORT: 8080
+    networks:
+      - app-network
+    ports:
+      - "8080:8080"   # host 8080 -> backend container 8080
+
+  frontend:
+    image: shriram2105/mean-frontend:latest
+    container_name: frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    ports:
+      - "4200:4200"   # host 4200 -> frontend container 4200
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo_data:

@@ -1,0 +1,82 @@
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY       = "shriram2105"
+        IMAGE_FRONTEND = "mean-frontend"
+        IMAGE_BACKEND  = "mean-backend"
+        IMAGE_TAG      = "${env.BUILD_NUMBER}"
+        DOCKER_CREDS   = "dockerhub-creds"
+        EC2_SSH_CRED   = "ec2-ssh-key"
+        EC2_HOST       = "ec2-54-236-201-80.compute-1.amazonaws.com"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                sh """
+                  echo "Building Frontend..."
+                  cd DevOps_Internship_Assignments/crud-dd-task-mean-app/crud-dd-task-mean-app/frontend
+                  docker build -t ${REGISTRY}/${IMAGE_FRONTEND}:${IMAGE_TAG} .
+
+                  echo "Building Backend..."
+                  cd ../backend
+                  docker build -t ${REGISTRY}/${IMAGE_BACKEND}:${IMAGE_TAG} .
+                """
+            }
+        }
+
+        stage('Push Images to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: DOCKER_CREDS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                      docker push ${REGISTRY}/${IMAGE_FRONTEND}:${IMAGE_TAG}
+                      docker push ${REGISTRY}/${IMAGE_BACKEND}:${IMAGE_TAG}
+
+                      docker tag ${REGISTRY}/${IMAGE_FRONTEND}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_FRONTEND}:latest
+                      docker push ${REGISTRY}/${IMAGE_FRONTEND}:latest
+
+                      docker tag ${REGISTRY}/${IMAGE_BACKEND}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_BACKEND}:latest
+                      docker push ${REGISTRY}/${IMAGE_BACKEND}:latest
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                sshagent(credentials: [EC2_SSH_CRED]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} '
+                          set -e
+                          echo "Pulling Latest Images..."
+                          docker pull ${REGISTRY}/${IMAGE_FRONTEND}:${IMAGE_TAG}
+                          docker pull ${REGISTRY}/${IMAGE_BACKEND}:${IMAGE_TAG}
+
+                          export TAG=${IMAGE_TAG}
+                          cd /home/ec2-user
+                          docker-compose down || true
+                          docker-compose up -d --force-recreate
+
+                          echo "Deployment done successfully 🎯"
+                        '
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Build finished with status: ${currentBuild.currentResult}"
+        }
+    }
+}

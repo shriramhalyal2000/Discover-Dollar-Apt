@@ -1,0 +1,10 @@
+Official Documentation of the Assesment:
+The application is publically Availble at ip:http://54.236.201.80
+the docker-hub repo link for official used images: https://hub.docker.com/u/shriram2105
+the jenkins build console output of sucessful build is also mentioned in this dir, named CICD buildoutput.txt
+and The nginx reverse proxy also in same dir named readmenginxreverseproxy.md
+the dockerfile for frontend, backend are in the main app dir where build is triggerd so its best to exclude in their own dir crud-dd-task-mean-app
+same with docker-compose file with jenkins and 
+and the git hub repo link is https://github.com/shriramhalyal2000/Discover-Dollar-Apt.git dev branch, not main
+
+and the Application Submit button wont work because of cors error
